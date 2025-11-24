@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { DEFAULT_RATIO_ID, findRatioValue } from '../lib/canvas/ratios'
-import { DEFAULT_BASE_WIDTH, MAX_SCALE, clamp, computeCoverScale, convertBorderToBasePx } from '../lib/canvas/math'
+import { DEFAULT_BASE_WIDTH, MAX_SCALE, clamp, computeCoverScale, computeContainScale, convertBorderToBasePx } from '../lib/canvas/math'
 import { loadImageFromFile } from '../lib/image/loadImage'
 import type {
   BorderSetting,
@@ -59,8 +59,11 @@ export const useCanvasStore = create<CanvasStoreState>((set, get) => ({
   exportOptions: { format: 'png', quality: 1, mode: 'original' },
   async loadImage(file: File) {
     const image = await loadImageFromFile(file)
-    set({ image })
-    ensureValidState({ fit: true })
+    // Reset transform - ImageLayer will initialize scale when canvas dimensions are available
+    set({ 
+      image,
+      transform: { x: 0, y: 0, scale: 1 }
+    })
   },
   setRatio(id) {
     set({ ratioId: id })
@@ -196,7 +199,7 @@ function getMinScale(state: CanvasStoreState): number {
 }
 
 // Guarantees that scale & alignment respect the current ratio/border constraints.
-function ensureValidState({ fit }: { fit: boolean }) {
+function ensureValidState({ fit, useContain = false }: { fit: boolean; useContain?: boolean }) {
   const state = useCanvasStore.getState()
   const image = state.image
   if (!image) {
@@ -204,19 +207,29 @@ function ensureValidState({ fit }: { fit: boolean }) {
   }
 
   const { baseWidth, baseHeight } = deriveDimensions(state)
-  const topPx = convertBorderToBasePx(state.borders.top, baseHeight)
-  const bottomPx = convertBorderToBasePx(state.borders.bottom, baseHeight)
-  const minScale = computeCoverScale(image, baseWidth, baseHeight, topPx, bottomPx)
+  
+  let initialScale: number
+  if (useContain) {
+    // Use contain logic: scale image to fit inside canvas
+    initialScale = computeContainScale(image, baseWidth, baseHeight)
+  } else {
+    // Use cover logic: scale image to cover canvas (with borders)
+    const topPx = convertBorderToBasePx(state.borders.top, baseHeight)
+    const bottomPx = convertBorderToBasePx(state.borders.bottom, baseHeight)
+    initialScale = computeCoverScale(image, baseWidth, baseHeight, topPx, bottomPx)
+  }
 
   useCanvasStore.setState((current) => {
-    const nextScale = Math.max(minScale, current.transform.scale)
+    const nextScale = useContain 
+      ? initialScale 
+      : Math.max(initialScale, current.transform.scale)
     const nextTransform = {
       ...current.transform,
       scale: nextScale,
     }
     if (fit) {
       nextTransform.x = 0
-      nextTransform.y = (topPx - bottomPx) / 2
+      nextTransform.y = 0
     }
     return { transform: nextTransform }
   })

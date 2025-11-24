@@ -32,3 +32,13 @@ export function computeCoverScale(
   return Math.max(scaleByWidth, scaleByHeight)
 }
 
+export function computeContainScale(
+  image: ImageMetadata,
+  canvasWidth: number,
+  canvasHeight: number
+): number {
+  const scaleByWidth = canvasWidth / image.width
+  const scaleByHeight = canvasHeight / image.height
+  return Math.min(scaleByWidth, scaleByHeight)
+}
+

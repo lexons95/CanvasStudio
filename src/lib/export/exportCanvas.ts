@@ -1,5 +1,4 @@
 import type { CanvasSnapshot, ExportOptions } from '../../types/canvas'
-import { convertBorderToBasePx } from '../canvas/math'
 import { renderScene } from '../canvas/render'
 
 interface ExportResponse {
@@ -15,18 +14,27 @@ export async function exportComposite(
     throw new Error('Import an image before exporting.')
   }
 
-  const baseWidth = snapshot.dimensions.baseWidth
-  const baseHeight = snapshot.dimensions.baseHeight
   const ratio = snapshot.dimensions.ratio
+  const previewWidth = snapshot.previewSize?.width ?? snapshot.dimensions.baseWidth
+  const previewHeight = snapshot.previewSize?.height ?? snapshot.dimensions.baseHeight
 
-  const previewWidth = snapshot.previewSize?.width ?? baseWidth
+  // Calculate target dimensions based on export mode
+  let targetWidth: number
+  let targetHeight: number
 
-  const targetWidth =
-    options.mode === 'original' ? snapshot.image.width : Math.round(previewWidth)
-  const targetHeight = Math.round(targetWidth / ratio)
+  if (options.mode === 'original') {
+    // Scale to original image resolution while maintaining aspect ratio
+    targetWidth = snapshot.image.width
+    targetHeight = Math.round(targetWidth / ratio)
+  } else {
+    // Use canvas size (preview size)
+    targetWidth = Math.round(previewWidth)
+    targetHeight = Math.round(previewHeight)
+  }
 
-  const widthScale = targetWidth / baseWidth
-  const heightScale = targetHeight / baseHeight
+  // Calculate scale factor from preview to target
+  const widthScale = targetWidth / previewWidth
+  const heightScale = targetHeight / previewHeight
 
   const canvas = document.createElement('canvas')
   const dpr = window.devicePixelRatio || 1
@@ -38,6 +46,7 @@ export async function exportComposite(
   }
   ctx.scale(dpr, dpr)
 
+  // Render only the canvas + image (workspace is never exported)
   renderScene({
     ctx,
     width: targetWidth,
@@ -49,8 +58,8 @@ export async function exportComposite(
       scale: snapshot.transform.scale,
     },
     borders: {
-      top: convertBorderToBasePx(snapshot.borders.top, baseHeight) * heightScale,
-      bottom: convertBorderToBasePx(snapshot.borders.bottom, baseHeight) * heightScale,
+      top: 0, // Borders are not used in the new architecture
+      bottom: 0,
     },
     image: snapshot.image,
   })
